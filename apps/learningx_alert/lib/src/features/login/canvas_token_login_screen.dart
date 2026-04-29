@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -12,14 +13,17 @@ class CanvasTokenLoginScreen extends ConsumerStatefulWidget {
   const CanvasTokenLoginScreen({super.key});
 
   @override
-  ConsumerState<CanvasTokenLoginScreen> createState() => _CanvasTokenLoginScreenState();
+  ConsumerState<CanvasTokenLoginScreen> createState() =>
+      _CanvasTokenLoginScreenState();
 }
 
-class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen> {
+class _CanvasTokenLoginScreenState
+    extends ConsumerState<CanvasTokenLoginScreen> {
   late final WebViewController _controller;
   var _status = 'SSU Canvas 로그인 페이지를 여는 중입니다.';
   var _isAutomating = false;
   var _profileLoaded = false;
+  final _sessionChecks = <String, Completer<bool>>{};
 
   @override
   void initState() {
@@ -56,29 +60,30 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
     final loggedIn = await _hasCanvasSession();
     if (loggedIn && !_profileLoaded) {
       setState(() => _status = '로그인 확인됨. 토큰 생성 화면으로 이동합니다.');
-      await _controller.loadRequest(Uri.parse('https://canvas.ssu.ac.kr/profile/settings'));
+      await _controller.loadRequest(
+        Uri.parse('https://canvas.ssu.ac.kr/profile/settings'),
+      );
     } else if (!loggedIn && mounted) {
       setState(() => _status = 'SSU 통합 로그인을 완료해 주세요.');
     }
   }
 
   Future<bool> _hasCanvasSession() async {
+    final checkId = DateTime.now().microsecondsSinceEpoch.toString();
+    final completer = Completer<bool>();
+    _sessionChecks[checkId] = completer;
+
     try {
-      final result = await _controller.runJavaScriptReturningResult('''
-        (async () => {
-          try {
-            const response = await fetch('/api/v1/users/self/profile', {
-              credentials: 'include',
-              headers: { 'Accept': 'application/json' }
-            });
-            return response.ok;
-          } catch (e) {
-            return false;
-          }
-        })();
-      ''');
-      return result == true || result.toString() == 'true';
+      await _controller.runJavaScript(_sessionCheckScript(checkId));
+      return await completer.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          _sessionChecks.remove(checkId);
+          return false;
+        },
+      );
     } catch (_) {
+      _sessionChecks.remove(checkId);
       return false;
     }
   }
@@ -90,7 +95,9 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
       _status = 'Canvas access token 자동 생성을 시도합니다.';
     });
 
-    final deviceName = Platform.localHostname.isEmpty ? 'device' : Platform.localHostname;
+    final deviceName = Platform.localHostname.isEmpty
+        ? 'device'
+        : Platform.localHostname;
     final purpose = 'LearningX Alert - $deviceName';
     await _controller.runJavaScript(_automationScript(purpose));
   }
@@ -99,7 +106,16 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
     final data = jsonDecode(message.message) as Map<String, dynamic>;
     final type = data['type'];
     if (type == 'status') {
-      setState(() => _status = data['message'] as String? ?? _status);
+      final status = data['message'] as String? ?? _status;
+      setState(() => _status = status);
+      return;
+    }
+    if (type == 'session') {
+      final id = data['id'] as String?;
+      final completer = id == null ? null : _sessionChecks.remove(id);
+      if (completer != null && !completer.isCompleted) {
+        completer.complete(data['ok'] == true);
+      }
       return;
     }
     if (type == 'token') {
@@ -132,7 +148,9 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
                 _profileLoaded = false;
                 _status = '로그인 페이지를 다시 엽니다.';
               });
-              _controller.loadRequest(Uri.parse('https://canvas.ssu.ac.kr/login'));
+              _controller.loadRequest(
+                Uri.parse('https://canvas.ssu.ac.kr/login'),
+              );
             },
             icon: const Icon(Icons.refresh),
           ),
@@ -158,7 +176,13 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
                     else
                       const Icon(Icons.info_outline, size: 18),
                     const SizedBox(width: 10),
-                    Expanded(child: Text(_status, maxLines: 3, overflow: TextOverflow.ellipsis)),
+                    Expanded(
+                      child: Text(
+                        _status,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -170,6 +194,38 @@ class _CanvasTokenLoginScreenState extends ConsumerState<CanvasTokenLoginScreen>
   }
 }
 
+String _sessionCheckScript(String checkId) {
+  final encodedCheckId = jsonEncode(checkId);
+  return '''
+    (async () => {
+      const post = (payload) => LearningXAlertBridge.postMessage(JSON.stringify(payload));
+      try {
+        const response = await fetch('/api/v1/users/self/profile', {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' }
+        });
+        post({
+          type: 'session',
+          id: $encodedCheckId,
+          ok: response.ok,
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          location: window.location.href
+        });
+      } catch (error) {
+        post({
+          type: 'session',
+          id: $encodedCheckId,
+          ok: false,
+          error: String(error && error.message ? error.message : error),
+          location: window.location.href
+        });
+      }
+    })();
+  ''';
+}
+
 String _automationScript(String purpose) {
   final encodedPurpose = jsonEncode(purpose);
   return '''
@@ -177,7 +233,10 @@ String _automationScript(String purpose) {
       const purpose = $encodedPurpose;
       const post = (payload) => LearningXAlertBridge.postMessage(JSON.stringify(payload));
       const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-      const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content || '';
+      const csrf = () =>
+        document.querySelector('meta[name="csrf-token"]')?.content ||
+        document.querySelector('input[name="authenticity_token"]')?.value ||
+        '';
 
       async function profile() {
         const response = await fetch('/api/v1/users/self/profile', {
@@ -188,105 +247,95 @@ String _automationScript(String purpose) {
         return await response.json();
       }
 
-      async function tryTokenApi(userId) {
-        const body = new URLSearchParams();
-        body.append('token[purpose]', purpose);
-        const paths = [`/api/v1/users/self/tokens`, `/api/v1/users/\${userId}/tokens`];
-        for (const path of paths) {
-          try {
-            post({ type: 'status', message: `토큰 API 확인 중: \${path}` });
-            const response = await fetch(path, {
-              method: 'POST',
-              credentials: 'include',
-              headers: {
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-                'X-CSRF-Token': csrf(),
-                'X-Requested-With': 'XMLHttpRequest'
-              },
-              body
-            });
-            if (!response.ok) continue;
-            const json = await response.json();
-            if (json && typeof json.token === 'string' && json.token.length > 20) {
-              return json.token;
-            }
-          } catch (_) {}
+      async function tryTokenApi() {
+        let path = '/profile/tokens';
+        try {
+          post({ type: 'status', message: 'Canvas access token 생성 요청 중입니다.' });
+          clickBySelector('.add_access_token_link');
+          await sleep(400);
+          const form = tokenForm();
+          path = form?.getAttribute('action') || '/profile/tokens';
+          const body = tokenRequestBody(form);
+          const csrfToken = body.get('authenticity_token') || csrf();
+          const response = await fetch(path, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+              'Accept': 'application/json, text/javascript, application/json+canvas-string-ids, */*; q=0.01',
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-CSRF-Token': csrfToken,
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            referrer: 'https://canvas.ssu.ac.kr/profile/settings',
+            body: body.toString()
+          });
+          const text = await response.text();
+          if (!response.ok) {
+            throw new Error(`토큰 생성 요청에 실패했습니다. (HTTP \${response.status})`);
+          }
+          const json = text ? JSON.parse(text) : null;
+          const token = tokenFromJson(json);
+          if (token) return token;
+          throw new Error('토큰 생성 응답에서 access token을 찾지 못했습니다.');
+        } catch (error) {
+          post({ type: 'error', message: String(error && error.message ? error.message : error) });
         }
         return null;
       }
 
-      function textOf(element) {
-        return (element.innerText || element.textContent || element.value || '').trim();
+      function tokenForm() {
+        return document.querySelector('form[action*="/profile/tokens"]') ||
+          document.querySelector('input[name="access_token[purpose]"]')?.closest('form');
       }
 
-      function clickByText(patterns) {
-        const elements = Array.from(document.querySelectorAll('button, a, input[type="button"], input[type="submit"]'));
-        const target = elements.find((element) => patterns.some((pattern) => pattern.test(textOf(element))));
+      function tokenRequestBody(form) {
+        const body = form ? new URLSearchParams(new FormData(form)) : new URLSearchParams();
+        const csrfToken = body.get('authenticity_token') || csrf();
+        body.set('utf8', body.get('utf8') || '');
+        body.set('authenticity_token', csrfToken);
+        body.set('purpose', purpose);
+        body.set('access_token[purpose]', purpose);
+        body.set('expires_at', '');
+        body.set('access_token[expires_at]', '');
+        body.set('_method', 'post');
+        return body;
+      }
+
+      function tokenFromJson(value) {
+        if (!value) return null;
+        if (typeof value === 'string') {
+          return value.length > 20 ? value : null;
+        }
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            const token = tokenFromJson(item);
+            if (token) return token;
+          }
+          return null;
+        }
+        if (typeof value === 'object') {
+          for (const key of ['token', 'visible_token', 'access_token']) {
+            const token = tokenFromJson(value[key]);
+            if (token) return token;
+          }
+        }
+        return null;
+      }
+
+      function clickBySelector(selector) {
+        const target = document.querySelector(selector);
         if (!target) return false;
         target.click();
         return true;
       }
 
-      function setInputValue(input, value) {
-        input.focus();
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-
-      function fillTokenForm() {
-        const inputs = Array.from(document.querySelectorAll('input, textarea'));
-        for (const input of inputs) {
-          const hint = [input.name, input.id, input.placeholder, input.getAttribute('aria-label')].join(' ').toLowerCase();
-          if (hint.includes('purpose') || hint.includes('token') || hint.includes('용도') || hint.includes('목적')) {
-            setInputValue(input, purpose);
-          }
-          if (hint.includes('expires') || hint.includes('expiration') || hint.includes('만료') || input.type === 'date' || input.type === 'datetime-local') {
-            setInputValue(input, '');
-          }
-        }
-      }
-
-      function findVisibleToken() {
-        const candidates = [];
-        for (const input of Array.from(document.querySelectorAll('input, textarea'))) {
-          if (input.value) candidates.push(input.value.trim());
-        }
-        for (const element of Array.from(document.querySelectorAll('code, pre, .token, [class*="token"], [id*="token"]'))) {
-          candidates.push(textOf(element));
-        }
-        for (const candidate of candidates) {
-          const match = candidate.match(/[A-Za-z0-9_~.-]{40,}/);
-          if (match) return match[0];
-        }
-        return null;
-      }
-
-      async function tryDomAutomation() {
-        post({ type: 'status', message: '프로필 화면에서 토큰 생성 버튼을 찾는 중입니다.' });
-        clickByText([/new access token/i, /generate.*token/i, /access token/i, /token/i, /토큰/, /액세스/]);
-        await sleep(900);
-        fillTokenForm();
-        await sleep(200);
-        clickByText([/generate token/i, /create token/i, /submit/i, /save/i, /생성/, /저장/, /확인/]);
-        await sleep(1800);
-        return findVisibleToken();
-      }
-
       try {
-        const user = await profile();
-        const apiToken = await tryTokenApi(user.id);
+        await profile();
+        const apiToken = await tryTokenApi();
         if (apiToken) {
           post({ type: 'token', token: apiToken });
           return;
         }
-        const domToken = await tryDomAutomation();
-        if (domToken) {
-          post({ type: 'token', token: domToken });
-          return;
-        }
-        post({ type: 'error', message: '토큰 생성 UI를 자동으로 찾지 못했습니다. 재시도하거나 Canvas 프로필 화면 구조를 확인해야 합니다.' });
       } catch (error) {
         post({ type: 'error', message: String(error && error.message ? error.message : error) });
       }
