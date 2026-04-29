@@ -1,39 +1,55 @@
-<!--
-This README describes the package. If you publish this package to pub.dev,
-this README's contents appear on the landing page for your package.
+# learningx_api
 
-For information about how to write a good package README, see the guide for
-[writing package pages](https://dart.dev/tools/pub/writing-package-pages).
+Canvas/LearningX API client used by the `learningx_alert` Flutter app.
 
-For general information about developing packages, see the Dart guide for
-[creating packages](https://dart.dev/guides/libraries/create-packages)
-and the Flutter guide for
-[developing packages and plugins](https://flutter.dev/to/develop-packages).
--->
+The default endpoint is SSU Canvas: `https://canvas.ssu.ac.kr`.
 
-TODO: Put a short description of the package here that helps potential users
-know whether this package might be useful for them.
+## Package layout
 
-## Features
-
-TODO: List what your package can do. Maybe include images, gifs, or videos.
-
-## Getting started
-
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+- `lib/learningx_api.dart`: public package exports.
+- `lib/src/learningx_api_client.dart`: authenticated Canvas API client.
+- `lib/src/*_item.dart`: JSON models for users, planner rows, and app-facing learning items.
+- `test/learningx_api_test.dart`: offline unit tests.
+- `test/live_learningx_api_test.dart`: optional live tests against the real Canvas web API.
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
-
 ```dart
-const like = 'sample';
+final api = LearningXApiClient(accessToken: accessToken);
+final profile = await api.getSelfProfile();
+final items = await api.getUpcomingLearningItems(daysAhead: 60);
 ```
 
-## Additional information
+## Live API testing
 
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+Live tests are skipped by default. To test this package against the real SSU Canvas API, provide a Canvas access token:
+
+```sh
+LEARNINGX_ACCESS_TOKEN='canvas-token' dart test packages/learningx_api/test/live_learningx_api_test.dart
+```
+
+To use another Canvas-compatible endpoint:
+
+```sh
+LEARNINGX_BASE_URL='https://canvas.example.edu' \
+LEARNINGX_ACCESS_TOKEN='canvas-token' \
+dart test packages/learningx_api/test/live_learningx_api_test.dart
+```
+
+The live test verifies that the token can load the current Canvas profile and that planner item requests can be made through `LearningXApiClient`.
+
+The schedule test also prints a preview table so the app-facing deadline data can be checked visually:
+
+```text
+LearningX live schedule preview
+Base URL: https://canvas.ssu.ac.kr
+User: Student Name (12345)
+Range: next 14 days
+Fetched items: 3
+
+No. | Due | Type | Course | Title
+----|-----|------|--------|------
+1. | 2026-05-01 23:59 | 과제 | Course Name | Assignment title
+```
+
+Use `LEARNINGX_DAYS_AHEAD` to change the fetch window and `LEARNINGX_PRINT_LIMIT` to change how many rows are printed.
