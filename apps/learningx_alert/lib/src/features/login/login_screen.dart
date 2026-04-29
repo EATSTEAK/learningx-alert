@@ -23,22 +23,6 @@ class LoginScreen extends StatelessWidget {
                 'SSU Canvas 과제, 퀴즈, 토론, 페이지 마감일을 동기화하고 로컬 알림을 예약합니다.',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              const SizedBox(height: 32),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('비공개 테스트 앱', style: Theme.of(context).textTheme.titleMedium),
-                      const SizedBox(height: 8),
-                      const Text(
-                        '관리자 Developer Key 없이 WebView SSO 로그인 후 Canvas 프로필의 개인 access token 생성을 자동화합니다. 공개 배포 전에는 공식 OAuth 전환이 필요합니다.',
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,

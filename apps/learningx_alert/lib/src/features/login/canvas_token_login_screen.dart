@@ -22,6 +22,7 @@ class _CanvasTokenLoginScreenState
   late final WebViewController _controller;
   var _status = 'SSU Canvas 로그인 페이지를 여는 중입니다.';
   var _isAutomating = false;
+  var _isWebViewVisible = true;
   var _profileLoaded = false;
   final _sessionChecks = <String, Completer<bool>>{};
 
@@ -59,12 +60,18 @@ class _CanvasTokenLoginScreenState
 
     final loggedIn = await _hasCanvasSession();
     if (loggedIn && !_profileLoaded) {
-      setState(() => _status = '로그인 확인됨. 토큰 생성 화면으로 이동합니다.');
+      setState(() {
+        _isWebViewVisible = false;
+        _status = '로그인 확인됨. 토큰 생성 화면으로 이동합니다.';
+      });
       await _controller.loadRequest(
         Uri.parse('https://canvas.ssu.ac.kr/profile/settings'),
       );
     } else if (!loggedIn && mounted) {
-      setState(() => _status = 'SSU 통합 로그인을 완료해 주세요.');
+      setState(() {
+        _isWebViewVisible = true;
+        _status = 'SSU 통합 로그인을 완료해 주세요.';
+      });
     }
   }
 
@@ -145,6 +152,7 @@ class _CanvasTokenLoginScreenState
             onPressed: () {
               setState(() {
                 _isAutomating = false;
+                _isWebViewVisible = true;
                 _profileLoaded = false;
                 _status = '로그인 페이지를 다시 엽니다.';
               });
@@ -158,7 +166,29 @@ class _CanvasTokenLoginScreenState
       ),
       body: Column(
         children: [
-          Expanded(child: WebViewWidget(controller: _controller)),
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_isWebViewVisible,
+                    child: AnimatedOpacity(
+                      opacity: _isWebViewVisible ? 1 : 0,
+                      duration: const Duration(milliseconds: 180),
+                      child: WebViewWidget(controller: _controller),
+                    ),
+                  ),
+                ),
+                if (!_isWebViewVisible)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: const Center(child: CircularProgressIndicator()),
+                    ),
+                  ),
+              ],
+            ),
+          ),
           Material(
             elevation: 8,
             child: SafeArea(

@@ -17,7 +17,9 @@ final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
 final secureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage(
     aOptions: AndroidOptions(),
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
   );
 });
 
@@ -37,9 +39,10 @@ final notificationServiceProvider = Provider<NotificationService>((ref) {
   throw UnimplementedError('NotificationService must be overridden in main.');
 });
 
-final accessTokenProvider = AsyncNotifierProvider<AccessTokenController, String?>(
-  AccessTokenController.new,
-);
+final accessTokenProvider =
+    AsyncNotifierProvider<AccessTokenController, String?>(
+      AccessTokenController.new,
+    );
 
 class AccessTokenController extends AsyncNotifier<String?> {
   @override
@@ -49,7 +52,6 @@ class AccessTokenController extends AsyncNotifier<String?> {
     state = const AsyncLoading();
     await ref.read(tokenStoreProvider).writeAccessToken(token);
     state = AsyncData(token);
-    ref.invalidate(learningItemsProvider);
   }
 
   Future<void> clear() async {
@@ -57,19 +59,20 @@ class AccessTokenController extends AsyncNotifier<String?> {
     await ref.read(learningItemCacheProvider).clear();
     await ref.read(notificationServiceProvider).cancelAll();
     state = const AsyncData(null);
-    ref.invalidate(learningItemsProvider);
     ref.invalidate(lastSyncProvider);
   }
 }
 
 final notificationSettingsProvider =
     AsyncNotifierProvider<NotificationSettingsController, NotificationSettings>(
-  NotificationSettingsController.new,
-);
+      NotificationSettingsController.new,
+    );
 
-class NotificationSettingsController extends AsyncNotifier<NotificationSettings> {
+class NotificationSettingsController
+    extends AsyncNotifier<NotificationSettings> {
   @override
-  Future<NotificationSettings> build() => ref.watch(settingsStoreProvider).readNotificationSettings();
+  Future<NotificationSettings> build() =>
+      ref.watch(settingsStoreProvider).readNotificationSettings();
 
   Future<void> setOffsetEnabled(Duration offset, bool enabled) async {
     final current = await future;
@@ -80,7 +83,6 @@ class NotificationSettingsController extends AsyncNotifier<NotificationSettings>
     final next = NotificationSettings(offsets: offsets);
     await ref.read(settingsStoreProvider).writeNotificationSettings(next);
     state = AsyncData(next);
-    ref.invalidate(learningItemsProvider);
   }
 }
 
@@ -99,7 +101,9 @@ final learningItemsProvider = FutureProvider<List<LearningItem>>((ref) async {
   await cache.writeItems(items);
   await cache.writeLastSync(DateTime.now());
   ref.invalidate(lastSyncProvider);
-  await ref.watch(notificationServiceProvider).scheduleLearningItems(items, settings);
+  await ref
+      .watch(notificationServiceProvider)
+      .scheduleLearningItems(items, settings);
 
   return items;
 });
