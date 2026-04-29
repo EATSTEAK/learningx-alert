@@ -1,0 +1,26 @@
+name: learningx_alert_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.11.1
+
+workspace:
+  - apps/learningx_alert
+  - packages/learningx_api
+
+dev_dependencies:
+  melos: ^7.5.1
+
+melos:
+  scripts:
+    analyze:
+      exec: flutter analyze
+      description: Analyze all Flutter/Dart packages.
+    test:
+      exec: flutter test
+      description: Run all package tests.
+    build_runner:
+      exec: flutter pub run build_runner build --delete-conflicting-outputs
+      description: Generate json_serializable files.
+      packageFilters:
+        dependsOn: build_runner
