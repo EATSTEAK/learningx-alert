@@ -14,13 +14,20 @@ dev_dependencies:
 melos:
   scripts:
     analyze:
-      exec: flutter analyze
+      run: dart analyze .
       description: Analyze all Flutter/Dart packages.
     test:
-      exec: flutter test
+      run: dart test packages/learningx_api && flutter test apps/learningx_alert
       description: Run all package tests.
     build_runner:
-      exec: flutter pub run build_runner build --delete-conflicting-outputs
+      run: dart run melos exec --depends-on=build_runner -- dart run build_runner build --delete-conflicting-outputs
       description: Generate json_serializable files.
-      packageFilters:
-        dependsOn: build_runner
+    run:android:
+      run: flutter run -d android -t apps/learningx_alert/lib/main.dart
+      description: Run the Flutter app on an Android device or emulator.
+    run:ios:
+      run: flutter run -d ios -t apps/learningx_alert/lib/main.dart
+      description: Run the Flutter app on an iOS device or simulator.
+    run:chrome:
+      run: flutter run -d chrome -t apps/learningx_alert/lib/main.dart
+      description: Run the Flutter app in Chrome.
