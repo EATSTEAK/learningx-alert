@@ -47,7 +47,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with WidgetsBindingObse
           ),
           IconButton(
             tooltip: '설정',
-            onPressed: () => context.go('/settings'),
+            onPressed: () => context.push('/settings'),
             icon: const Icon(Icons.settings),
           ),
         ],
