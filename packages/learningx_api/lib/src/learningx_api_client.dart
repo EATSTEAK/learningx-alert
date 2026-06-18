@@ -1,17 +1,17 @@
 import 'package:dio/dio.dart';
 
+import 'announcement_item.dart';
 import 'canvas_api_exception.dart';
+import 'canvas_course.dart';
 import 'canvas_user.dart';
+import 'graded_submission_item.dart';
 import 'learning_item.dart';
 import 'planner_item.dart';
 
 class LearningXApiClient {
-  LearningXApiClient({
-    required String accessToken,
-    Uri? baseUri,
-    Dio? dio,
-  })  : baseUri = baseUri ?? Uri.parse(defaultBaseUrl),
-        _dio = dio ?? Dio() {
+  LearningXApiClient({required String accessToken, Uri? baseUri, Dio? dio})
+    : baseUri = baseUri ?? Uri.parse(defaultBaseUrl),
+      _dio = dio ?? Dio() {
     _dio.options = BaseOptions(
       baseUrl: (baseUri ?? Uri.parse(defaultBaseUrl)).toString(),
       connectTimeout: const Duration(seconds: 15),
@@ -41,12 +41,16 @@ class LearningXApiClient {
   Future<List<PlannerItem>> getPlannerItems({
     DateTime? startDate,
     DateTime? endDate,
+    String? filter,
   }) async {
-    final query = <String, dynamic>{
-      if (startDate != null) 'start_date': _dateParam(startDate),
-      if (endDate != null) 'end_date': _dateParam(endDate),
-    };
-    final rows = await _getPaginatedList('/api/v1/planner/items', queryParameters: query);
+    final query = <String, dynamic>{};
+    if (startDate != null) query['start_date'] = _dateParam(startDate);
+    if (endDate != null) query['end_date'] = _dateParam(endDate);
+    if (filter != null) query['filter'] = filter;
+    final rows = await _getPaginatedList(
+      '/api/v1/planner/items',
+      queryParameters: query,
+    );
     return rows
         .whereType<Map>()
         .map((row) => PlannerItem.fromJson(Map<String, dynamic>.from(row)))
@@ -59,7 +63,11 @@ class LearningXApiClient {
   }) async {
     final start = from ?? DateTime.now();
     final end = start.add(Duration(days: daysAhead));
-    final plannerItems = await getPlannerItems(startDate: start, endDate: end);
+    final plannerItems = await getPlannerItems(
+      startDate: start,
+      endDate: end,
+      filter: 'incomplete_items',
+    );
     return plannerItems
         .map(_toLearningItem)
         .where((item) => item != null)
@@ -76,6 +84,112 @@ class LearningXApiClient {
       });
   }
 
+  Future<List<CanvasCourse>> getActiveCourses() async {
+    final rows = await _getPaginatedList(
+      '/api/v1/courses',
+      queryParameters: const {
+        'enrollment_type': 'student',
+        'enrollment_state': 'active',
+        'include[]': ['total_scores', 'favorites'],
+        'per_page': 100,
+      },
+    );
+    return rows
+        .whereType<Map>()
+        .map((row) => CanvasCourse.fromJson(Map<String, dynamic>.from(row)))
+        .where((course) => course.id.isNotEmpty)
+        .toList(growable: false)
+      ..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  Future<List<AnnouncementItem>> getAnnouncements({
+    int daysBack = 30,
+    List<CanvasCourse>? courses,
+  }) async {
+    final targetCourses = courses ?? await getActiveCourses();
+    final values = <AnnouncementItem>[];
+    for (final course in targetCourses) {
+      values.addAll(
+        await getAnnouncementsForCourse(course, daysBack: daysBack),
+      );
+    }
+    values.sort((a, b) => b.postedAt.compareTo(a.postedAt));
+    return values;
+  }
+
+  Future<List<AnnouncementItem>> getAnnouncementsForCourse(
+    CanvasCourse course, {
+    int daysBack = 30,
+  }) async {
+    final end = DateTime.now();
+    final start = end.subtract(Duration(days: daysBack));
+    final rows = await _getPaginatedList(
+      '/api/v1/announcements',
+      queryParameters: {
+        'context_codes[]': ['course_${course.id}'],
+        'start_date': _dateParam(start),
+        'end_date': _dateParam(end),
+        'active_only': true,
+        'per_page': 100,
+      },
+    );
+    return rows
+        .whereType<Map>()
+        .map((row) {
+          final json = Map<String, dynamic>.from(row);
+          json['course_id'] = course.id;
+          json['course_name'] = course.name;
+          return AnnouncementItem.fromJson(json);
+        })
+        .where((item) => item.id.isNotEmpty)
+        .toList(growable: false)
+      ..sort((a, b) => b.postedAt.compareTo(a.postedAt));
+  }
+
+  Future<List<GradedSubmissionItem>> getGradedSubmissions({
+    int daysBack = 120,
+    List<CanvasCourse>? courses,
+  }) async {
+    final targetCourses = courses ?? await getActiveCourses();
+    final values = <GradedSubmissionItem>[];
+    for (final course in targetCourses) {
+      values.addAll(
+        await getGradedSubmissionsForCourse(course, daysBack: daysBack),
+      );
+    }
+    values.sort(_compareGradedSubmissions);
+    return values;
+  }
+
+  Future<List<GradedSubmissionItem>> getGradedSubmissionsForCourse(
+    CanvasCourse course, {
+    int daysBack = 120,
+  }) async {
+    final since = DateTime.now().subtract(Duration(days: daysBack));
+    final rows = await _getPaginatedList(
+      '/api/v1/courses/${course.id}/students/submissions',
+      queryParameters: {
+        'workflow_state': 'graded',
+        'graded_since': _dateParam(since),
+        'include[]': ['assignment'],
+        'order': 'graded_at',
+        'order_direction': 'descending',
+        'per_page': 100,
+      },
+    );
+    return rows
+        .whereType<Map>()
+        .map((row) {
+          final json = Map<String, dynamic>.from(row);
+          json['course_id'] = course.id;
+          json['course_name'] = course.name;
+          return GradedSubmissionItem.fromJson(json);
+        })
+        .where((item) => item.assignmentId.isNotEmpty && item.isGraded)
+        .toList(growable: false)
+      ..sort(_compareGradedSubmissions);
+  }
+
   Future<Map<String, dynamic>> _getMap(String path) async {
     try {
       final response = await _dio.get<Object?>(path);
@@ -85,7 +199,10 @@ class LearningXApiClient {
       if (response.data is Map) {
         return Map<String, dynamic>.from(response.data! as Map);
       }
-      throw CanvasApiException('Unexpected Canvas API response.', details: response.data);
+      throw CanvasApiException(
+        'Unexpected Canvas API response.',
+        details: response.data,
+      );
     } on DioException catch (error) {
       throw CanvasApiException.fromDio(error);
     }
@@ -105,7 +222,10 @@ class LearningXApiClient {
             : await _dio.getUri<Object?>(Uri.parse(nextUrl));
         final data = response.data;
         if (data is! List) {
-          throw CanvasApiException('Unexpected paginated Canvas API response.', details: data);
+          throw CanvasApiException(
+            'Unexpected paginated Canvas API response.',
+            details: data,
+          );
         }
         values.addAll(data);
         nextUrl = _nextLink(response.headers.value('link'));
@@ -135,6 +255,11 @@ String? _nextLink(String? header) {
 }
 
 LearningItem? _toLearningItem(PlannerItem item) {
+  final override = item.plannerOverride;
+  if (override?.markedComplete == true || override?.dismissed == true) {
+    return null;
+  }
+
   final type = _typeFromPlanner(item.plannableType);
   if (!_defaultLearningTypes.contains(type)) return null;
 
@@ -179,7 +304,9 @@ String? _stringField(Map<String, dynamic> json, List<String> keys) {
   for (final key in keys) {
     final value = json[key];
     if (value is String && value.trim().isNotEmpty) return value;
-    if (value != null && value is! Map && value is! Iterable) return value.toString();
+    if (value != null && value is! Map && value is! Iterable) {
+      return value.toString();
+    }
   }
   return null;
 }
@@ -207,4 +334,15 @@ bool _submissionCompleted(Object? submissions) {
     return workflow == 'submitted' || workflow == 'graded';
   }
   return data['submitted_at'] != null;
+}
+
+int _compareGradedSubmissions(GradedSubmissionItem a, GradedSubmissionItem b) {
+  final aDate = a.gradedAt ?? a.submittedAt;
+  final bDate = b.gradedAt ?? b.submittedAt;
+  if (aDate == null && bDate == null) {
+    return a.assignmentName.compareTo(b.assignmentName);
+  }
+  if (aDate == null) return 1;
+  if (bDate == null) return -1;
+  return bDate.compareTo(aDate);
 }
