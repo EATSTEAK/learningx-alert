@@ -9,7 +9,8 @@ import 'package:timezone/timezone.dart' as tz;
 import '../storage/app_settings_store.dart';
 
 class NotificationService {
-  final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _plugin =
+      FlutterLocalNotificationsPlugin();
 
   Future<void> initialize() async {
     timezone_data.initializeTimeZones();
@@ -22,17 +23,53 @@ class NotificationService {
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings();
-    await _plugin.initialize(const InitializationSettings(android: android, iOS: ios));
+    await _plugin.initialize(
+      const InitializationSettings(android: android, iOS: ios),
+    );
 
     await _plugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
     await _plugin
-        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
   }
 
   Future<void> cancelAll() => _plugin.cancelAll();
+
+  Future<bool?> areNotificationsEnabled() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (android != null) return android.areNotificationsEnabled();
+
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    final iosSettings = await ios?.checkPermissions();
+    if (iosSettings != null) return iosSettings.isEnabled;
+    return null;
+  }
+
+  Future<int> pendingNotificationCount() async {
+    final pending = await _plugin.pendingNotificationRequests();
+    return pending.length;
+  }
+
+  Future<void> showTestNotification() {
+    return _plugin.show(
+      _stableId('learningx:test:${DateTime.now().millisecondsSinceEpoch}'),
+      'LearningX Alert 테스트',
+      '알림이 정상적으로 표시됩니다.',
+      _instantNotificationDetails(),
+    );
+  }
 
   Future<void> scheduleLearningItems(
     List<LearningItem> items,
@@ -55,7 +92,8 @@ class NotificationService {
             android: AndroidNotificationDetails(
               'learningx_deadlines',
               'LearningX deadlines',
-              channelDescription: 'Assignment and learning item deadline reminders.',
+              channelDescription:
+                  'Assignment and learning item deadline reminders.',
               importance: Importance.high,
               priority: Priority.high,
             ),
@@ -66,6 +104,56 @@ class NotificationService {
       }
     }
   }
+
+  Future<void> showNewAnnouncementNotifications(
+    List<AnnouncementItem> announcements,
+    NotificationSettings settings,
+  ) async {
+    if (!settings.announcementAlertsEnabled || announcements.isEmpty) return;
+    final first = announcements.first;
+    final body = announcements.length == 1
+        ? '${first.courseName} · ${first.title}'
+        : '${first.title} 외 ${announcements.length - 1}개';
+    await _plugin.show(
+      _stableId('learningx:announcement:${first.id}:${announcements.length}'),
+      announcements.length == 1 ? '새 공지' : '새 공지 ${announcements.length}개',
+      body,
+      _instantNotificationDetails(channelId: 'learningx_announcements'),
+    );
+  }
+
+  Future<void> showGradeUpdateNotifications(
+    List<GradedSubmissionItem> submissions,
+    NotificationSettings settings,
+  ) async {
+    if (!settings.gradeAlertsEnabled || submissions.isEmpty) return;
+    final first = submissions.first;
+    final score = _formatScore(first);
+    final body = submissions.length == 1
+        ? '${first.courseName} · ${first.assignmentName}$score'
+        : '${first.assignmentName} 외 ${submissions.length - 1}개';
+    await _plugin.show(
+      _stableId('learningx:grade:${first.id}:${submissions.length}'),
+      submissions.length == 1 ? '성적 업데이트' : '성적 업데이트 ${submissions.length}개',
+      body,
+      _instantNotificationDetails(channelId: 'learningx_grades'),
+    );
+  }
+}
+
+NotificationDetails _instantNotificationDetails({
+  String channelId = 'learningx_updates',
+}) {
+  return NotificationDetails(
+    android: AndroidNotificationDetails(
+      channelId,
+      'LearningX updates',
+      channelDescription: 'LearningX announcements and grade update alerts.',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: const DarwinNotificationDetails(),
+  );
 }
 
 int _stableId(String value) {
@@ -90,4 +178,18 @@ String _titleForOffset(Duration offset) {
 String _formatDue(DateTime dueAt) {
   final local = dueAt.toLocal();
   return '${local.month}/${local.day} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+}
+
+String _formatScore(GradedSubmissionItem item) {
+  final score = item.score;
+  final points = item.pointsPossible;
+  final grade = item.grade;
+  if (score == null && grade == null) return '';
+  final scoreText = score == null
+      ? null
+      : points == null
+      ? '$score점'
+      : '$score/$points점';
+  final values = [?scoreText, ?grade];
+  return ' · ${values.join(' · ')}';
 }
