@@ -44,6 +44,7 @@ dependencies:
     path: ../../packages/learningx_api
   shared_preferences: ^2.5.3
   timezone: ^0.10.1
+  url_launcher: ^6.3.2
   webview_flutter: ^4.13.0
 
 dev_dependencies:
