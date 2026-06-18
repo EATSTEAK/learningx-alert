@@ -1,17 +1,19 @@
-# learningx_alert
+# LearningX Alert App
 
-A new Flutter project.
+Flutter app for the LearningX Alert workspace.
 
-## Getting Started
+## Features
 
-This project is a starting point for a Flutter application.
+- SSU Canvas login and access-token storage.
+- Deadline dashboard with local reminders.
+- Recent Canvas announcements with new-announcement alerts.
+- Assignment-level graded submission dashboard with grade-update alerts.
+- Offline cache fallback for deadlines, announcements, and grades.
 
-A few resources to get you started if this is your first Flutter project:
+## Run
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+From the repository root:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```sh
+flutter run -t apps/learningx_alert/lib/main.dart
+```

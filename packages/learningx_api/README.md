@@ -17,7 +17,10 @@ The default endpoint is SSU Canvas: `https://canvas.ssu.ac.kr`.
 ```dart
 final api = LearningXApiClient(accessToken: accessToken);
 final profile = await api.getSelfProfile();
+final courses = await api.getActiveCourses();
 final items = await api.getUpcomingLearningItems(daysAhead: 60);
+final announcements = await api.getAnnouncements(courses: courses);
+final grades = await api.getGradedSubmissions(courses: courses);
 ```
 
 ## Live API testing

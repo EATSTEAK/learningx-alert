@@ -7,13 +7,14 @@ LearningX Alert
 ## 프로그램 개요
 
 LearningX Alert는 숭실대학교 SSU LearningX/Canvas의 과제, 퀴즈,
-토론, 페이지 등 학습 일정의 마감 정보를 가져와 앱에서 확인하고
-로컬 알림을 예약하는 Flutter 앱입니다.
+토론, 페이지 등 학습 일정의 마감 정보와 최근 공지, 과제별 채점 결과를
+한 번에 확인하고 로컬 알림을 받을 수 있는 Flutter 앱입니다.
 
 사용자는 앱에서 SSU Canvas 로그인을 진행하고, Canvas access token을
-생성 및 저장한 뒤 앞으로 60일 이내의 마감 일정을 동기화할 수 있습니다.
-동기화된 일정은 기기 로컬 캐시에 저장되며, 설정한 알림 시점에 맞춰
-마감 알림을 받을 수 있습니다.
+생성 및 저장한 뒤 앞으로 60일 이내의 마감 일정, 최근 30일 공지,
+최근 120일 과제별 채점 결과를 동기화할 수 있습니다. 동기화된 데이터는
+기기 로컬 캐시에 저장되며, 마감/새 공지/성적 업데이트 알림을 받을 수
+있습니다.
 
 ## 주요 기능 설명
 
@@ -22,11 +23,18 @@ LearningX Alert는 숭실대학교 SSU LearningX/Canvas의 과제, 퀴즈,
 - Canvas Planner API 기반 학습 일정 조회
 - 과제, 퀴즈, 토론, 위키 페이지 마감 일정 필터링
 - 완료된 항목 제외 및 마감일 기준 정렬
-- 홈 화면에서 마감 일정 목록과 마지막 동기화 시각 표시
+- 하단 탭 기반 마감, 공지, 성적, 설정 화면
+- 마감 항목을 오늘, 내일, 7일 이내, 이후, 마감 지남으로 그룹화
+- 최근 공지 조회, 과목 필터, 신규 공지 표시
+- 과제별 채점 결과 조회, 과목 필터, 점수/등급/제출 상태 표시
+- Canvas 원문 바로가기
+- 대시보드에서 마지막 동기화 시각과 섹션별 동기화 오류 표시
 - 새로고침 및 앱 재개 시 일정 재동기화
-- 학습 일정 로컬 캐시 저장
-- 마감 24시간 전, 1시간 전 로컬 알림 예약
-- 알림 시점 설정 및 알림 재예약
+- 마감, 공지, 성적 데이터 로컬 캐시 저장
+- 마감 7일 전, 24시간 전, 3시간 전, 1시간 전, 15분 전 로컬 알림 예약
+- 새 공지 및 성적 업데이트 로컬 알림
+- 알림 권한/예약 개수 확인과 테스트 알림
+- 알림 시점 및 알림 종류 설정
 - 로그아웃 시 토큰, 캐시, 예약 알림 정리
 
 ## 프로젝트 구조
@@ -206,7 +214,7 @@ flutter run -d <device_id> -t apps/learningx_alert/lib/main.dart
 - API 클라이언트: `packages/learningx_api/lib/src/learningx_api_client.dart`
 - 앱 provider 연결: `apps/learningx_alert/lib/src/app_providers.dart`
 - 로그인 WebView: `apps/learningx_alert/lib/src/features/login/canvas_token_login_screen.dart`
-- 홈 일정 목록: `apps/learningx_alert/lib/src/features/home/home_screen.dart`
+- 대시보드 화면: `apps/learningx_alert/lib/src/features/home/home_screen.dart`
 - 알림 예약: `apps/learningx_alert/lib/src/notifications/notification_service.dart`
 - 설정 화면: `apps/learningx_alert/lib/src/features/settings/settings_screen.dart`
 
